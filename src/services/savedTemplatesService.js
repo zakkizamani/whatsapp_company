@@ -1,19 +1,13 @@
 // src/services/savedTemplatesService.js
-import { CONFIG } from '../utils/constants';
+import { CONFIG } from '../utils/constants.js';
 
 /**
- * Service for saved templates operations
+ * Service for saved templates API operations
  */
 class SavedTemplatesService {
   /**
-   * Get all saved templates with pagination and filters
+   * Get templates with filters and pagination
    * @param {Object} params - Query parameters
-   * @param {number} params.page - Page number
-   * @param {number} params.size - Page size
-   * @param {string} params.order - Sort order (asc/desc)
-   * @param {string} params.search - Search query
-   * @param {string} params.category - Category filter
-   * @param {string} params.status - Status filter
    * @returns {Promise<Object>} - API response
    */
   async getTemplates(params = {}) {
@@ -24,14 +18,31 @@ class SavedTemplatesService {
         throw new Error('Authentication token not found');
       }
 
+      const {
+        page = 1,
+        size = 10,
+        search = '',
+        category = '',
+        status = '',
+        order = 'desc'
+      } = params;
+
       const url = new URL(`${CONFIG.API_BASE_URL}/notification-gateway/template/find`);
+      url.searchParams.append('page', page.toString());
+      url.searchParams.append('size', size.toString());
+      url.searchParams.append('order', order);
       
-      // Add query parameters
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          url.searchParams.append(key, value.toString());
-        }
-      });
+      if (search.trim()) {
+        url.searchParams.append('search', search.trim());
+      }
+      
+      if (category && category !== 'ALL') {
+        url.searchParams.append('category', category);
+      }
+      
+      if (status && status !== 'ALL') {
+        url.searchParams.append('status', status);
+      }
 
       const response = await fetch(url, {
         method: 'GET',
@@ -42,15 +53,14 @@ class SavedTemplatesService {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const result = await response.json();
       return result;
 
     } catch (error) {
-      console.error('Error fetching saved templates:', error);
+      console.error('Error fetching templates:', error);
       throw error;
     }
   }
@@ -58,7 +68,7 @@ class SavedTemplatesService {
   /**
    * Get template by ID
    * @param {string} templateId - Template ID
-   * @returns {Promise<Object>} - Template data
+   * @returns {Promise<Object>} - API response
    */
   async getTemplateById(templateId) {
     try {
@@ -68,7 +78,7 @@ class SavedTemplatesService {
         throw new Error('Authentication token not found');
       }
 
-      const response = await fetch(`${CONFIG.API_BASE_URL}/${CONFIG.ENDPOINTS.GET_TEMPLATE_BY_ID}/${templateId}`, {
+      const response = await fetch(`${CONFIG.API_BASE_URL}${CONFIG.ENDPOINTS.GET_TEMPLATE_BY_ID}/${templateId}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -77,8 +87,7 @@ class SavedTemplatesService {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const result = await response.json();
@@ -103,15 +112,16 @@ class SavedTemplatesService {
         throw new Error('Authentication token not found');
       }
 
-      const response = await fetch(`${CONFIG.API_BASE_URL}/notification-gateway/template/${templateId}`, {
+      const response = await fetch(`${CONFIG.API_BASE_URL}${CONFIG.ENDPOINTS.DELETE_TEMPLATE}/${templateId}`, {
         method: 'DELETE',
         headers: {
+          'Accept': 'application/json',
           'Authorization': `Bearer ${token}`
         }
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
 
@@ -138,7 +148,7 @@ class SavedTemplatesService {
         throw new Error('Authentication token not found');
       }
 
-      const response = await fetch(`${CONFIG.API_BASE_URL}/${CONFIG.ENDPOINTS.UPDATE_TEMPLATE}/${templateId}`, {
+      const response = await fetch(`${CONFIG.API_BASE_URL}${CONFIG.ENDPOINTS.UPDATE_TEMPLATE}/${templateId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -148,7 +158,7 @@ class SavedTemplatesService {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
 
@@ -157,79 +167,6 @@ class SavedTemplatesService {
 
     } catch (error) {
       console.error('Error updating template:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get template statistics
-   * @returns {Promise<Object>} - Template statistics
-   */
-  async getTemplateStats() {
-    try {
-      const templates = await this.getTemplates({ size: 1000 }); // Get all templates for stats
-      
-      if (!templates.data || !templates.data.items) {
-        return {
-          total: 0,
-          approved: 0,
-          pending: 0,
-          rejected: 0,
-          flagged: 0,
-          disabled: 0
-        };
-      }
-
-      const items = templates.data.items;
-      const stats = {
-        total: items.length,
-        approved: items.filter(t => t.status === 'APPROVED').length,
-        pending: items.filter(t => t.status === 'PENDING').length,
-        rejected: items.filter(t => t.status === 'REJECTED').length,
-        flagged: items.filter(t => t.status === 'FLAGGED').length,
-        disabled: items.filter(t => t.status === 'DISABLED').length,
-        paused: items.filter(t => t.status === 'PAUSED').length,
-        inAppeal: items.filter(t => t.status === 'IN_APPEAL').length,
-        reinstated: items.filter(t => t.status === 'REINSTATED').length,
-        pendingDeletion: items.filter(t => t.status === 'PENDING_DELETION').length
-      };
-
-      return stats;
-
-    } catch (error) {
-      console.error('Error fetching template stats:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Export templates to CSV
-   * @returns {Promise<Blob>} - CSV file blob
-   */
-  async exportTemplates() {
-    try {
-      const token = localStorage.getItem(CONFIG.STORAGE_KEYS.TOKEN_ERP);
-      
-      if (!token) {
-        throw new Error('Authentication token not found');
-      }
-
-      const response = await fetch(`${CONFIG.API_BASE_URL}/notification-gateway/template/export`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const blob = await response.blob();
-      return blob;
-
-    } catch (error) {
-      console.error('Error exporting templates:', error);
       throw error;
     }
   }
@@ -258,7 +195,7 @@ class SavedTemplatesService {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
 
@@ -294,7 +231,7 @@ class SavedTemplatesService {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
 
@@ -303,6 +240,38 @@ class SavedTemplatesService {
 
     } catch (error) {
       console.error('Error bulk deleting templates:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Export templates to CSV
+   * @returns {Promise<Blob>} - CSV file blob
+   */
+  async exportTemplates() {
+    try {
+      const token = localStorage.getItem(CONFIG.STORAGE_KEYS.TOKEN_ERP);
+      
+      if (!token) {
+        throw new Error('Authentication token not found');
+      }
+
+      const response = await fetch(`${CONFIG.API_BASE_URL}/notification-gateway/template/export`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      return blob;
+
+    } catch (error) {
+      console.error('Error exporting templates:', error);
       throw error;
     }
   }
