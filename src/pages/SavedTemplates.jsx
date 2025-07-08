@@ -94,7 +94,7 @@ const SavedTemplates = () => {
             setSelectedTemplate(template);
             handlePreview();
           }}
-          onEdit={(templateId) => navigate(`/edit-template/${templateId}`)}
+          onEdit={(templateId) => navigate(`/templates/edit-template/${templateId}`)}
           onDelete={(template) => {
             setSelectedTemplate(template);
             setShowDeleteModal(true);

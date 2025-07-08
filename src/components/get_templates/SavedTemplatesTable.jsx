@@ -1,4 +1,4 @@
-// src/components/saved_templates/SavedTemplatesTable.jsx
+// src/components/saved_templates/SavedTemplatesTable.jsx - Fixed Edit Handler
 import React from 'react';
 import { 
   FileText, 
@@ -106,6 +106,10 @@ const getTemplatePreview = (components) => {
     buttons: []
   };
 
+  if (!components || !Array.isArray(components)) {
+    return preview;
+  }
+
   components.forEach(component => {
     switch (component.type) {
       case 'HEADER':
@@ -114,7 +118,7 @@ const getTemplatePreview = (components) => {
         }
         break;
       case 'BODY':
-        preview.body = component.text;
+        preview.body = component.text || '';
         break;
       case 'FOOTER':
         preview.footer = component.text;
@@ -131,14 +135,18 @@ const getTemplatePreview = (components) => {
 // Format date
 const formatDate = (dateString) => {
   if (!dateString) return '-';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    return '-';
+  }
 };
 
 const SavedTemplatesTable = ({
@@ -172,7 +180,7 @@ const SavedTemplatesTable = ({
     );
   }
 
-  if (templates.length === 0) {
+  if (!templates || templates.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
         <div className="text-center py-16">
@@ -231,7 +239,10 @@ const SavedTemplatesTable = ({
                       <div>
                         <h3 className="font-semibold text-gray-900">{template.name}</h3>
                         <p className="text-sm text-gray-600 truncate max-w-xs">
-                          {preview.body.length > 50 ? `${preview.body.substring(0, 50)}...` : preview.body}
+                          {preview.body && preview.body.length > 50 
+                            ? `${preview.body.substring(0, 50)}...` 
+                            : preview.body || 'No content'
+                          }
                         </p>
                       </div>
                     </div>
@@ -240,19 +251,19 @@ const SavedTemplatesTable = ({
                     <div className="flex items-center gap-2">
                       <CategoryIcon className="w-4 h-4 text-gray-600" />
                       <span className="text-sm font-medium text-gray-900 capitalize">
-                        {template.category.toLowerCase()}
+                        {template.category ? template.category.toLowerCase() : 'Unknown'}
                       </span>
                     </div>
                   </td>
                   <td className="py-4 px-6">
-                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border ${statusConfig[template.status]?.bgColor} ${statusConfig[template.status]?.color} ${statusConfig[template.status]?.borderColor}`}>
+                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border ${statusConfig[template.status]?.bgColor || 'bg-gray-50'} ${statusConfig[template.status]?.color || 'text-gray-600'} ${statusConfig[template.status]?.borderColor || 'border-gray-200'}`}>
                       <StatusIcon className="w-3 h-3" />
-                      {statusConfig[template.status]?.label || template.status}
+                      {statusConfig[template.status]?.label || template.status || 'Unknown'}
                     </div>
                   </td>
                   <td className="py-4 px-6">
                     <span className="text-sm text-gray-900 uppercase font-mono">
-                      {template.language}
+                      {template.language || 'en'}
                     </span>
                   </td>
                   <td className="py-4 px-6">
@@ -271,7 +282,10 @@ const SavedTemplatesTable = ({
                         <Eye className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => onEdit(template._id)}
+                        onClick={() => {
+                          console.log('Edit button clicked for template:', template._id);
+                          onEdit(template._id);
+                        }}
                         className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
                         title="Edit"
                       >
@@ -294,37 +308,91 @@ const SavedTemplatesTable = ({
       </div>
 
       {/* Pagination */}
-      <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-700">
-              Showing {startItem} to {endItem} of {totalItems} templates
-            </span>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onPageChange(Math.max(currentPage - 1, 1))}
-              disabled={currentPage === 1}
-              className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
+      {totalPages > 1 && (
+        <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-700">
+                Showing {startItem} to {endItem} of {totalItems} templates
+              </span>
+            </div>
             
-            <span className="px-4 py-2 text-sm font-medium text-gray-700">
-              Page {currentPage} of {totalPages}
-            </span>
-            
-            <button
-              onClick={() => onPageChange(Math.min(currentPage + 1, totalPages))}
-              disabled={currentPage === totalPages}
-              className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onPageChange(Math.max(currentPage - 1, 1))}
+                disabled={currentPage === 1}
+                className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Previous page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              
+              {/* Page numbers */}
+              <div className="flex items-center gap-1">
+                {/* First page */}
+                {currentPage > 3 && (
+                  <>
+                    <button
+                      onClick={() => onPageChange(1)}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      1
+                    </button>
+                    {currentPage > 4 && (
+                      <span className="px-2 py-2 text-sm text-gray-500">...</span>
+                    )}
+                  </>
+                )}
+                
+                {/* Current page and neighbors */}
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  const page = Math.max(1, Math.min(currentPage - 2 + i, totalPages));
+                  if (page < Math.max(1, currentPage - 2) || page > Math.min(totalPages, currentPage + 2)) {
+                    return null;
+                  }
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => onPageChange(page)}
+                      className={`px-3 py-2 text-sm border rounded-lg transition-colors ${
+                        page === currentPage
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  );
+                })}
+                
+                {/* Last page */}
+                {currentPage < totalPages - 2 && (
+                  <>
+                    {currentPage < totalPages - 3 && (
+                      <span className="px-2 py-2 text-sm text-gray-500">...</span>
+                    )}
+                    <button
+                      onClick={() => onPageChange(totalPages)}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      {totalPages}
+                    </button>
+                  </>
+                )}
+              </div>
+              
+              <button
+                onClick={() => onPageChange(Math.min(currentPage + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Next page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
