@@ -1,0 +1,8 @@
+# Fallback for client-side routing
+/*    /index.html   200
+
+# API routes (if any)
+/api/*  /api/  200
+
+# Static assets
+/assets/*  /assets/  200

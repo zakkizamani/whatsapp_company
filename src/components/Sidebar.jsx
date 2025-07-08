@@ -24,7 +24,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }) => {
       current: location.pathname === '/dashboard'
     },
     {
-      name: 'List Meta Tempalte',
+      name: 'List Meta Template',
       href: '/templates/library',
       icon: ListIcon,
       current: location.pathname === '/templates/library'
