@@ -1,3 +1,4 @@
+// src/App.jsx - Enhanced dengan Library Integration Routes
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import LoginForm from './pages/LoginForm.jsx'
 import Dashboard from './pages/Dashboard.jsx'
@@ -20,13 +21,7 @@ const ProtectedRoute = ({ children }) => {
     );
   }
   
-  return isAuthenticated ? (
-    <ErrorBoundary level="page">
-      {children}
-    </ErrorBoundary>
-  ) : (
-    <Navigate to="/login" replace />
-  );
+  return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
 function App() {
@@ -35,71 +30,63 @@ function App() {
       <Router>
         <div className="App">
           <Routes>
-            {/* Redirect root to login */}
-            <Route path="/" element={<Navigate to="/login" replace />} />
+            {/* Public Routes */}
+            <Route path="/login" element={<LoginForm />} />
             
-            {/* Login Route - Wrapped in Error Boundary */}
-            <Route 
-              path="/login" 
-              element={
-                <ErrorBoundary level="page">
-                  <LoginForm />
-                </ErrorBoundary>
-              } 
-            />
+            {/* Protected Routes */}
+            <Route path="/" element={
+              <ProtectedRoute>
+                <Navigate to="/dashboard" replace />
+              </ProtectedRoute>
+            } />
             
-            {/* Protected Dashboard Route */}
-            <Route 
-              path="/dashboard" 
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              } 
-            />
-
-            {/* Protected Template Library Route */}
-            <Route 
-              path="/templates/library" 
-              element={
-                <ProtectedRoute>
-                  <TemplateLibrary />
-                </ProtectedRoute>
-              } 
-            />
-
-            {/* Protected Show Templates Route */}
-            <Route 
-              path="/templates" 
-              element={
-                <ProtectedRoute>
-                  <SavedTemplates />
-                </ProtectedRoute>
-              } 
-            />
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
             
-            {/* Protected Create Template Route */}
-            <Route 
-              path="/templates/create" 
-              element={
-                <ProtectedRoute>
-                  <CreateTemplate />
-                </ProtectedRoute>
-              } 
-            />
+            {/* Template Library Routes */}
+            <Route path="/templates/library" element={
+              <ProtectedRoute>
+                <TemplateLibrary />
+              </ProtectedRoute>
+            } />
             
-            {/* Template Edit Route */}
-            <Route 
-              path="/edit-template/:templateId" 
-              element={
-                <ProtectedRoute>
-                  <CreateTemplate isEdit={true} />
-                </ProtectedRoute>
-              } 
-            />
+            {/* Template Creation Routes */}
+            <Route path="/templates/create" element={
+              <ProtectedRoute>
+                <CreateTemplate />
+              </ProtectedRoute>
+            } />
             
-            {/* Catch all other routes and redirect to login */}
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            {/* Template Edit Routes */}
+            <Route path="/templates/edit-template/:templateId" element={
+              <ProtectedRoute>
+                <CreateTemplate isEdit={true} />
+              </ProtectedRoute>
+            } />
+            
+            {/* Saved Templates Routes */}
+            <Route path="/saved-templates" element={
+              <ProtectedRoute>
+                <SavedTemplates />
+              </ProtectedRoute>
+            } />
+            
+            {/* Legacy routes for backward compatibility */}
+            <Route path="/templates" element={
+              <ProtectedRoute>
+                <Navigate to="/saved-templates" replace />
+              </ProtectedRoute>
+            } />
+            
+            {/* Catch all route */}
+            <Route path="*" element={
+              <ProtectedRoute>
+                <Navigate to="/dashboard" replace />
+              </ProtectedRoute>
+            } />
           </Routes>
         </div>
       </Router>

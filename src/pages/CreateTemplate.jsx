@@ -1,4 +1,4 @@
-// src/pages/CreateTemplate.jsx - Enhanced dengan Edit Mode
+// src/pages/CreateTemplate.jsx - Enhanced dengan Library Integration & Edit Mode
 import React, { useState, useEffect } from 'react';
 import { 
   MessageSquare, 
@@ -11,9 +11,11 @@ import {
   Plus,
   ChevronDown,
   Loader2,
-  Edit
+  Edit,
+  BookOpen,
+  RefreshCw
 } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
 
 // Components
 import Layout from '../components/Layout.jsx';
@@ -48,24 +50,94 @@ import {
 
 const CreateTemplate = ({ isEdit = false }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { templateId } = useParams(); // Untuk edit mode
   const { toasts, showToast, removeToast } = useToast();
+  
+  // Detect mode berdasarkan URL dan params
+  const isEditMode = window.location.pathname.includes('/edit-template/');
+  const isFromLibrary = searchParams.get('from') === 'library' || location.state?.fromLibrary;
   
   // State
   const [loading, setLoading] = useState(false);
   const [loadingTemplate, setLoadingTemplate] = useState(isEdit && templateId);
-  const [currentStep, setCurrentStep] = useState(isEdit ? 2 : 1); // Skip category untuk edit
+  const [currentStep, setCurrentStep] = useState(
+    isEditMode || isFromLibrary ? 2 : 1 // Skip category untuk edit atau from library
+  );
   const [templateData, setTemplateData] = useState(INITIAL_TEMPLATE_DATA);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
-  // Detect edit mode from URL
+  // Load data dari berbagai sumber saat component mount
   useEffect(() => {
-    const isEditMode = window.location.pathname.includes('/edit-template/');
-    if (isEditMode && templateId) {
-      loadTemplateForEdit();
-    }
-  }, [templateId]);
+    const loadInitialData = async () => {
+      try {
+        if (isEditMode && templateId) {
+          // Edit mode - load dari saved template
+          await loadTemplateForEdit();
+        } else if (isFromLibrary) {
+          // From library - load dari sessionStorage atau location.state
+          loadTemplateFromLibrary();
+        } else {
+          // Create mode biasa
+          setIsDataLoaded(true);
+        }
+      } catch (error) {
+        console.error('Error loading initial data:', error);
+        showToast('Failed to load template data', 'error');
+      }
+    };
 
-  // Function untuk transform API response ke form data
+    loadInitialData();
+  }, [templateId, isEditMode, isFromLibrary]);
+
+  // Function untuk load template dari library
+  const loadTemplateFromLibrary = () => {
+    try {
+      let libraryData = null;
+
+      // Coba ambil dari location.state dulu
+      if (location.state?.templateData) {
+        libraryData = location.state.templateData;
+      } 
+      // Fallback ke sessionStorage
+      else {
+        const storedData = sessionStorage.getItem('libraryTemplateData');
+        if (storedData) {
+          libraryData = JSON.parse(storedData);
+          // Clear sessionStorage setelah digunakan
+          sessionStorage.removeItem('libraryTemplateData');
+        }
+      }
+
+      if (libraryData) {
+        // Modifikasi nama template untuk membedakan dari library
+        const modifiedData = {
+          ...libraryData,
+          name: `${libraryData.name}_custom_${Date.now()}`.substring(0, 512) // Ensure name length limit
+        };
+        
+        setTemplateData(modifiedData);
+        setIsDataLoaded(true);
+        
+        showToast('Template loaded from library successfully!', 'success');
+        
+        console.log('Loaded template from library:', {
+          original: libraryData,
+          modified: modifiedData
+        });
+      } else {
+        throw new Error('No template data found');
+      }
+    } catch (error) {
+      console.error('Error loading template from library:', error);
+      showToast('Failed to load template from library', 'error');
+      // Redirect back to library
+      navigate('/templates/library');
+    }
+  };
+
+  // Function untuk transform API response ke form data (untuk edit mode)
   const transformAPIToFormData = (apiData) => {
     const transformedData = {
       name: apiData.name || '',
@@ -146,6 +218,7 @@ const CreateTemplate = ({ isEdit = false }) => {
       if (result.status_code === 201 && result.data) {
         const transformedData = transformAPIToFormData(result.data);
         setTemplateData(transformedData);
+        setIsDataLoaded(true);
         
         console.log('Loaded template for edit:', {
           original: result.data,
@@ -220,6 +293,19 @@ const CreateTemplate = ({ isEdit = false }) => {
     }));
   };
 
+  // Reset form handler
+  const handleReset = () => {
+    if (isFromLibrary) {
+      // Jika dari library, load ulang data library
+      loadTemplateFromLibrary();
+    } else {
+      // Reset ke initial data
+      setTemplateData(INITIAL_TEMPLATE_DATA);
+      setCurrentStep(isEditMode ? 2 : 1);
+    }
+    showToast('Form has been reset', 'info');
+  };
+
   // Submit handler untuk create dan edit
   const handleSubmit = async () => {
     const validation = validateTemplate(templateData);
@@ -231,8 +317,6 @@ const CreateTemplate = ({ isEdit = false }) => {
 
     setLoading(true);
     try {
-      const isEditMode = window.location.pathname.includes('/edit-template/');
-      
       if (isEditMode && templateId) {
         // Edit mode - transform untuk API edit
         const editPayload = transformToAPIFormat(templateData);
@@ -242,7 +326,7 @@ const CreateTemplate = ({ isEdit = false }) => {
         showToast('Template updated successfully!', 'success');
         console.log('Template updated:', result);
       } else {
-        // Create mode
+        // Create mode (baik dari library maupun create biasa)
         const result = await templateService.createTemplate(templateData);
         showToast('Template submitted successfully for approval!', 'success');
         console.log('Template created:', result);
@@ -262,6 +346,8 @@ const CreateTemplate = ({ isEdit = false }) => {
 
   // Auto-generate examples based on body text
   useEffect(() => {
+    if (!isDataLoaded) return; // Skip jika data belum loaded
+
     const paramType = detectParameterType(templateData.body.text);
     
     if (paramType === 'positional') {
@@ -315,26 +401,44 @@ const CreateTemplate = ({ isEdit = false }) => {
         }));
       }
     }
-  }, [templateData.body.text, templateData.body.examples, templateData.body.namedExamples, templateData.body.parameterType]);
+  }, [templateData.body.text, templateData.body.examples, templateData.body.namedExamples, templateData.body.parameterType, isDataLoaded]);
 
-  // Determine if we're in edit mode
-  const isEditMode = window.location.pathname.includes('/edit-template/');
-  
   // Page titles dan descriptions
-  const pageTitle = isEditMode ? "Edit Template" : "Create WhatsApp Template";
-  const pageDescription = isEditMode 
-    ? "Modify your existing message template" 
-    : "Design and submit a new message template for approval";
+  const getPageInfo = () => {
+    if (isEditMode) {
+      return {
+        title: "Edit Template",
+        description: "Modify your existing message template",
+        icon: Edit
+      };
+    } else if (isFromLibrary) {
+      return {
+        title: "Customize Template",
+        description: "Customize template from library for your needs",
+        icon: BookOpen
+      };
+    } else {
+      return {
+        title: "Create WhatsApp Template",
+        description: "Design and submit a new message template for approval",
+        icon: MessageSquare
+      };
+    }
+  };
 
-  // Loading state untuk edit mode
-  if (loadingTemplate) {
+  const pageInfo = getPageInfo();
+
+  // Loading state untuk edit mode atau loading template
+  if (loadingTemplate || !isDataLoaded) {
     return (
-      <Layout title={pageTitle}>
+      <Layout title={pageInfo.title}>
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center">
               <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto mb-4" />
-              <p className="text-gray-600">Loading template data...</p>
+              <p className="text-gray-600">
+                {loadingTemplate ? 'Loading template data...' : 'Preparing template...'}
+              </p>
             </div>
           </div>
         </div>
@@ -343,7 +447,7 @@ const CreateTemplate = ({ isEdit = false }) => {
   }
 
   return (
-    <Layout title={pageTitle}>
+    <Layout title={pageInfo.title}>
       <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
       
       <div className="max-w-7xl mx-auto">
@@ -352,16 +456,43 @@ const CreateTemplate = ({ isEdit = false }) => {
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center shadow-lg">
-                {isEditMode ? <Edit className="w-7 h-7 text-white" /> : <MessageSquare className="w-7 h-7 text-white" />}
+                {React.createElement(pageInfo.icon, { className: "w-7 h-7 text-white" })}
               </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-1">{pageTitle}</h1>
-                <p className="text-gray-600 text-lg">{pageDescription}</p>
+              <div className="flex-1">
+                <h1 className="text-3xl font-bold text-gray-900 mb-1">{pageInfo.title}</h1>
+                <p className="text-gray-600 text-lg">{pageInfo.description}</p>
+                {isFromLibrary && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <BookOpen className="w-4 h-4 text-blue-500" />
+                    <span className="text-sm text-blue-600 font-medium">Based on template library</span>
+                  </div>
+                )}
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3">
+                {(isFromLibrary || isEditMode) && (
+                  <button
+                    onClick={handleReset}
+                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all font-medium text-gray-700"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Reset
+                  </button>
+                )}
+                
+                <button
+                  onClick={() => navigate('/templates/library')}
+                  className="flex items-center gap-2 px-4 py-2 border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-all font-medium"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  Browse Library
+                </button>
               </div>
             </div>
 
-            {/* Progress Bar - Hide untuk edit mode */}
-            {!isEditMode && (
+            {/* Progress Bar - Hide untuk edit mode dan from library */}
+            {!isEditMode && !isFromLibrary && (
               <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-4">
@@ -384,8 +515,8 @@ const CreateTemplate = ({ isEdit = false }) => {
           </div>
         </ErrorBoundary>
 
-        {/* Step 1: Category Selection - Skip untuk edit mode */}
-        {!isEditMode && currentStep === 1 && (
+        {/* Step 1: Category Selection - Skip untuk edit mode dan from library */}
+        {!isEditMode && !isFromLibrary && currentStep === 1 && (
           <CategorySelection
             selectedCategory={templateData.category}
             onCategorySelect={(category) => handleInputChange('category', category)}
@@ -394,13 +525,13 @@ const CreateTemplate = ({ isEdit = false }) => {
           />
         )}
 
-        {/* Step 2: Template Builder - Show untuk edit mode atau step 2 */}
-        {(isEditMode || currentStep === 2) && (
+        {/* Step 2: Template Builder - Show untuk edit mode, from library, atau step 2 */}
+        {(isEditMode || isFromLibrary || currentStep === 2) && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Form Section */}
             <div className="space-y-6">
-              {/* Selected Category Badge - Show untuk edit mode */}
-              {isEditMode && templateData.category && (
+              {/* Selected Category Badge - Show untuk edit mode dan from library */}
+              {(isEditMode || isFromLibrary) && templateData.category && (
                 <ErrorBoundary level="component">
                   <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4">
                     <div className="flex items-center gap-3">
@@ -540,11 +671,17 @@ const CreateTemplate = ({ isEdit = false }) => {
               <ErrorBoundary level="component">
                 <div className="flex justify-between items-center pt-6">
                   <button
-                    onClick={() => isEditMode ? navigate('/saved-templates') : prevStep()}
+                    onClick={() => {
+                      if (isEditMode || isFromLibrary) {
+                        navigate('/saved-templates');
+                      } else {
+                        prevStep();
+                      }
+                    }}
                     className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all font-medium text-gray-700 flex items-center gap-2"
                   >
                     <ArrowLeft className="w-4 h-4" />
-                    {isEditMode ? 'Cancel' : 'Back'}
+                    {isEditMode || isFromLibrary ? 'Cancel' : 'Back'}
                   </button>
 
                   <button
@@ -615,10 +752,23 @@ const CreateTemplate = ({ isEdit = false }) => {
                         ].filter(Boolean).join(', ') || 'Body only'}
                       </span>
                     </div>
-                    {isEditMode && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Mode:</span>
+                      <span className="font-medium">
+                        {isEditMode && <span className="text-blue-600">Edit Mode</span>}
+                        {isFromLibrary && <span className="text-purple-600">From Library</span>}
+                        {!isEditMode && !isFromLibrary && <span className="text-green-600">Create Mode</span>}
+                      </span>
+                    </div>
+                    {templateData.body.parameterType !== 'none' && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Mode:</span>
-                        <span className="font-medium text-blue-600">Edit Mode</span>
+                        <span className="text-gray-600">Parameters:</span>
+                        <span className="font-medium">
+                          {templateData.body.parameterType === 'positional' 
+                            ? `${templateData.body.examples.length} positional`
+                            : `${templateData.body.namedExamples.length} named`
+                          }
+                        </span>
                       </div>
                     )}
                   </div>

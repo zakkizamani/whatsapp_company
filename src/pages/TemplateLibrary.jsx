@@ -1,5 +1,7 @@
+// src/pages/TemplateLibrary.jsx - Enhanced dengan Use Template Integration
 import { useState, useEffect } from 'react';
 import { Search, MessageSquare, Filter, Copy, Eye, Send, Download, ChevronDown, Clock, CheckCheck, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout.jsx';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import { CONFIG } from '../utils/constants';
@@ -152,11 +154,13 @@ const formatTemplateBody = (body, params) => {
 };
 
 const TemplateLibrary = () => {
+  const navigate = useNavigate();
   const [templates, setTemplates] = useState([]);
   const [filteredTemplates, setFilteredTemplates] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const hasBackground = bgCard;
 
   // Filter states
@@ -252,6 +256,88 @@ const TemplateLibrary = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Fetch template detail by ID
+  const fetchTemplateDetail = async (templateId) => {
+    setLoadingDetail(true);
+    try {
+      const token = localStorage.getItem(CONFIG.STORAGE_KEYS.TOKEN_ERP);
+      
+      const response = await fetch(
+        `${CONFIG.API_BASE_URL}/notification-gateway/template/library/${templateId}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.data;
+      } else {
+        throw new Error('Failed to fetch template detail');
+      }
+    } catch (error) {
+      console.error('Error fetching template detail:', error);
+      throw error;
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  // Transform library template to create template format
+  const transformLibraryToCreateFormat = (libraryTemplate) => {
+    const transformedData = {
+      name: libraryTemplate.name || '',
+      category: libraryTemplate.category || '',
+      language: libraryTemplate.language || 'en',
+      header: {
+        type: libraryTemplate.header ? 'TEXT' : 'NONE',
+        text: libraryTemplate.header || '',
+        media_url: '',
+        media_id: ''
+      },
+      body: {
+        text: libraryTemplate.body || '',
+        parameterType: 'none',
+        examples: [],
+        namedExamples: []
+      },
+      footer: {
+        text: libraryTemplate.footer || ''
+      },
+      buttons: libraryTemplate.buttons || []
+    };
+
+    // Handle body parameters
+    if (libraryTemplate.body_params && libraryTemplate.body_params.length > 0) {
+      // Detect parameter type from body text
+      const positionalRegex = /\{\{(\d+)\}\}/g;
+      const namedRegex = /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g;
+      
+      const positionalMatches = [...libraryTemplate.body.matchAll(positionalRegex)];
+      const namedMatches = [...libraryTemplate.body.matchAll(namedRegex)];
+      
+      if (positionalMatches.length > 0) {
+        // Positional parameters
+        transformedData.body.parameterType = 'positional';
+        transformedData.body.examples = libraryTemplate.body_params;
+      } else if (namedMatches.length > 0) {
+        // Named parameters
+        transformedData.body.parameterType = 'named';
+        const namedVariables = namedMatches.map(match => match[1]);
+        transformedData.body.namedExamples = namedVariables.map((varName, index) => ({
+          param_name: varName,
+          example: libraryTemplate.body_params[index] || ''
+        }));
+      }
+    }
+
+    return transformedData;
   };
 
   // Set sample data for demo
@@ -365,10 +451,30 @@ const TemplateLibrary = () => {
     setShowPreview(true);
   };
 
-  // Handle template use
-  const handleUseTemplate = (template) => {
-    console.log('Using template:', template);
-    alert(`Template "${template.name}" selected! (akan diarahkan ke halaman send message)`);
+  // Handle template use - Navigate to create template with data
+  const handleUseTemplate = async (template) => {
+    try {
+      // Fetch full template detail first
+      const fullTemplate = await fetchTemplateDetail(template.id);
+      
+      // Transform to create template format
+      const transformedData = transformLibraryToCreateFormat(fullTemplate);
+      
+      // Store in sessionStorage untuk transfer data
+      sessionStorage.setItem('libraryTemplateData', JSON.stringify(transformedData));
+      
+      // Navigate to create template page with flag
+      navigate('/templates/create?from=library', { 
+        state: { 
+          templateData: transformedData,
+          fromLibrary: true 
+        }
+      });
+      
+    } catch (error) {
+      console.error('Error using template:', error);
+      alert('Failed to load template data. Please try again.');
+    }
   };
 
   return (
@@ -393,7 +499,7 @@ const TemplateLibrary = () => {
                 <p className="text-gray-600 text-lg">Browse dan pilih template yang sesuai untuk bisnis Anda</p>
               </div>
               <button
-                onClick={() => window.location.href = '/templates/create'}
+                onClick={() => navigate('/templates/create')}
                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all font-medium shadow-md hover:shadow-lg"
               >
                 <Plus className="w-5 h-5" />
@@ -490,6 +596,16 @@ const TemplateLibrary = () => {
             </ErrorBoundary>
           </div>
         </ErrorBoundary>
+
+        {/* Loading Detail Overlay */}
+        {loadingDetail && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div className="bg-white rounded-xl p-6 text-center">
+              <div className="w-10 h-10 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading template data...</p>
+            </div>
+          </div>
+        )}
 
         {/* Templates Grid */}
         <ErrorBoundary 
@@ -678,7 +794,7 @@ const TemplateLibrary = () => {
                                 <div className="flex-1">
                                   <div className="font-medium text-gray-900">{param}</div>
                                   <div className="text-xs text-gray-500 mt-0.5">
-                                    Type: <span className="font-medium">{selectedTemplate.body_param_types[idx]}</span>
+                                    Type: <span className="font-medium">{selectedTemplate.body_param_types?.[idx] || 'TEXT'}</span>
                                   </div>
                                 </div>
                               </div>
@@ -698,10 +814,20 @@ const TemplateLibrary = () => {
                   <div className="flex gap-3 mt-8 pt-6 border-t border-gray-200">
                     <button
                       onClick={() => handleUseTemplate(selectedTemplate)}
-                      className="flex-1 bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-full hover:from-green-600 hover:to-green-700 transition-all flex items-center justify-center gap-2 font-medium shadow-md hover:shadow-lg transform hover:scale-105"
+                      disabled={loadingDetail}
+                      className="flex-1 bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-full hover:from-green-600 hover:to-green-700 transition-all flex items-center justify-center gap-2 font-medium shadow-md hover:shadow-lg transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Send className="w-5 h-5" />
-                      Use This Template
+                      {loadingDetail ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-5 h-5" />
+                          Use This Template
+                        </>
+                      )}
                     </button>
                     <button
                       onClick={() => navigator.clipboard.writeText(selectedTemplate.body)}
